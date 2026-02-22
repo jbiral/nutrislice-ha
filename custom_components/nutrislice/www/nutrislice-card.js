@@ -1,16 +1,15 @@
 class NutrisliceCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
-    if (!this.content) {
+    if (this.config && !this.content) {
       this.init();
     }
-    this.updateContent();
+    if (this.content) {
+      this.updateContent();
+    }
   }
 
   setConfig(config) {
-    if (!config.entity) {
-      throw new Error('Please define a Nutrislice sensor entity');
-    }
     this.config = config;
   }
 
@@ -73,7 +72,7 @@ class NutrisliceCard extends HTMLElement {
     });
 
     // Reset to today button
-    const todayBtn = document.createElement('mwc-button');
+    const todayBtn = document.createElement('ha-button');
     todayBtn.innerText = 'Today';
     todayBtn.className = 'today-btn';
     todayBtn.addEventListener('click', () => {
@@ -357,7 +356,10 @@ class NutrisliceCard extends HTMLElement {
   }
 }
 
-customElements.define('nutrislice-card', NutrisliceCard);
+if (!customElements.get('nutrislice-card')) {
+  customElements.define('nutrislice-card', NutrisliceCard);
+}
+
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "nutrislice-card",

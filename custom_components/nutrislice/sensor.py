@@ -100,7 +100,6 @@ class NutrisliceSensor(CoordinatorEntity[NutrisliceDataUpdateCoordinator], Senso
             today_str = datetime.now().strftime("%Y-%m-%d")
             # Automatically jump to tomorrow if past 1 PM
             if datetime.now().hour >= 13:
-                 from datetime import timedelta
                  target_str = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
             else:
                  target_str = today_str
@@ -224,6 +223,13 @@ class NutrisliceSensor(CoordinatorEntity[NutrisliceDataUpdateCoordinator], Senso
                         })
                         day_data["has_menu"] = True
             
+            if day_data["is_holiday"]:
+                day_data["menu_summary"] = day_data["holiday_name"]
+            elif day_data["menu_items"]:
+                day_data["menu_summary"] = ", ".join([item["name"] for item in day_data["menu_items"]])
+            else:
+                day_data["menu_summary"] = "No menu"
+            
             parsed_days.append(day_data)
 
         # Determine target date for the card
@@ -231,10 +237,15 @@ class NutrisliceSensor(CoordinatorEntity[NutrisliceDataUpdateCoordinator], Senso
             target_str = self._target_date
         else:
             if datetime.now().hour >= 13:
-                 from datetime import timedelta
                  target_str = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
             else:
                  target_str = datetime.now().strftime("%Y-%m-%d")
+
+        today_str_abs = datetime.now().strftime("%Y-%m-%d")
+        tomorrow_str_abs = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        today_menu = next((d["menu_summary"] for d in parsed_days if d["date"] == today_str_abs), "No menu")
+        tomorrow_menu = next((d["menu_summary"] for d in parsed_days if d["date"] == tomorrow_str_abs), "No menu")
 
         return {
             "get_target_date": target_str, # Keep for existing logic if any
@@ -243,5 +254,7 @@ class NutrisliceSensor(CoordinatorEntity[NutrisliceDataUpdateCoordinator], Senso
             "school_name": self.school_name,
             "meal_type": self.meal_type,
             "categories": self.categories,
+            "today_menu": today_menu,
+            "tomorrow_menu": tomorrow_menu,
             "days": parsed_days
         }

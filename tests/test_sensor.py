@@ -110,3 +110,14 @@ async def test_sensor_state_and_attributes(hass: HomeAssistant) -> None:
         mock_now.strftime.return_value = "2026-02-17"
         mock_now.hour = 10
         assert sensor.native_value == "2 Entrees Available"
+    
+    # 4. Test set_target_date service (Handle the timedelta logic)
+    with patch("custom_components.nutrislice.sensor.datetime") as mock_datetime:
+        from datetime import datetime as dt
+        mock_now = mock_datetime.now.return_value
+        mock_now.strftime.side_effect = lambda fmt: (dt(2026, 2, 17) if fmt == "%Y-%m-%d" else dt(2026, 2, 17)).strftime(fmt)
+        mock_now.hour = 10 # Before 1 PM - THIS WAS TRIGGERING THE ERROR
+        
+        # This SHOULD NO LONGER fail with UnboundLocalError
+        attrs = sensor.extra_state_attributes
+        assert attrs["target_date"] == "2026-02-17"

@@ -66,11 +66,32 @@ categories:           # Optional: list categories to display
 
 **Note:** The `categories` list in the card should match the ones you selected during the integration setup. Common categories include `entree`, `sides`, `fruit`, `veggies`, and `milk`.
 
+## Automations & Notifications
+
+You can easily send the daily menu to your phone via an automation using the `today_menu` attribute.
+
+**Example Automation:**
+
+```yaml
+alias: "Send School Lunch Notification"
+trigger:
+  - platform: time
+    at: "07:30:00"
+condition:
+  - condition: template
+    value_template: "{{ state_attr('sensor.elementary_school_lunch', 'today_menu') != 'No menu' }}"
+action:
+  - service: notify.mobile_app_your_phone
+    data:
+      title: "Today's Lunch"
+      message: "On the menu today: {{ state_attr('sensor.elementary_school_lunch', 'today_menu') }}"
+```
+
 ## Support the Project
 
 If you find this integration useful, please consider sponsoring my work:
 
-<iframe src="https://github.com/sponsors/jbiral/button" title="Sponsor jbiral" height="32" width="114" style="border: 0; border-radius: 6px;"></iframe>
+[![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/jbiral)
 
 ---
 
