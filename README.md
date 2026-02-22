@@ -87,12 +87,6 @@ action:
       message: "On the menu today: {{ state_attr('sensor.elementary_school_lunch', 'today_menu') }}"
 ```
 
-## Support the Project
-
-If you find this integration useful, please consider sponsoring my work:
-
-[![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/jbiral)
-
 ---
 
 _Disclaimer: This project is not affiliated with, authorized, maintained, sponsored or endorsed by Nutrislice, Inc or any of its affiliates or subsidiaries._
