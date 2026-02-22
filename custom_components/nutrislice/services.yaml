@@ -1,0 +1,20 @@
+set_date:
+  name: Set Date
+  description: Sets the target date for the sensor to display.
+  fields:
+    entity_id:
+      name: Entity
+      description: The Nutrislice sensor entity.
+      example: sensor.school_lunch
+      required: true
+      selector:
+        entity:
+          integration: nutrislice
+          domain: sensor
+    date:
+      name: Date
+      description: Target date in YYYY-MM-DD format, or 'today'/'tomorrow'.
+      example: 2023-10-31
+      required: true
+      selector:
+        text:

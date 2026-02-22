@@ -1,0 +1,16 @@
+# Home Assistant
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+.venv/
+/.pytest_cache/
+tests/.pytest_cache/
+
+# Node
+node_modules/
+npm-debug.log
+package-lock.json
+
+# Local config
+*.local
