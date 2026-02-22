@@ -1,11 +1,18 @@
-import json
 from datetime import datetime
 
 # Simulate state attributes
 attributes = {
     "days": [
-        {"date": "2026-02-19", "has_menu": True, "menu_items": [{"name": "Pizza", "category": "entree"}]},
-        {"date": "2026-02-20", "has_menu": True, "menu_items": [{"name": "Burger", "category": "entree"}]},
+        {
+            "date": "2026-02-19",
+            "has_menu": True,
+            "menu_items": [{"name": "Pizza", "category": "entree"}],
+        },
+        {
+            "date": "2026-02-20",
+            "has_menu": True,
+            "menu_items": [{"name": "Burger", "category": "entree"}],
+        },
     ]
 }
 

@@ -1,15 +1,16 @@
 """Test the Nutrislice config flow."""
-import pytest
+
 from unittest.mock import patch
 
+import pytest
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.core import HomeAssistant
 
 from custom_components.nutrislice.const import (
-    CONF_DISTRICT, 
-    CONF_MEAL_TYPE, 
-    CONF_SCHOOL_NAME, 
-    DOMAIN
+    CONF_DISTRICT,
+    CONF_MEAL_TYPE,
+    CONF_SCHOOL_NAME,
+    DOMAIN,
 )
 
 
@@ -22,13 +23,15 @@ async def test_form(hass: HomeAssistant) -> None:
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["errors"] == {}
 
-    with patch(
-        "custom_components.nutrislice.config_flow.aiohttp.ClientSession.get"
-    ) as mock_get, patch(
-        "custom_components.nutrislice.async_setup_entry",
-        return_value=True,
-    ) as mock_setup_entry:
-        
+    with (
+        patch(
+            "custom_components.nutrislice.config_flow.aiohttp.ClientSession.get"
+        ) as mock_get,
+        patch(
+            "custom_components.nutrislice.async_setup_entry",
+            return_value=True,
+        ) as mock_setup_entry,
+    ):
         # Mock successful API response
         mock_response = mock_get.return_value.__aenter__.return_value
         mock_response.status = 200
@@ -66,6 +69,7 @@ async def test_form(hass: HomeAssistant) -> None:
     }
     assert len(mock_setup_entry.mock_calls) == 1
 
+
 @pytest.mark.asyncio
 async def test_form_invalid_auth(hass: HomeAssistant) -> None:
     """Test we handle invalid auth."""
@@ -79,7 +83,7 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
         # Mock failed API response
         mock_response = mock_get.return_value.__aenter__.return_value
         mock_response.status = 404
-        
+
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {
@@ -91,6 +95,7 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
 
     assert result2["type"] == data_entry_flow.FlowResultType.FORM
     assert result2["errors"] == {"base": "invalid_auth"}
+
 
 @pytest.mark.asyncio
 async def test_form_cannot_connect(hass: HomeAssistant) -> None:

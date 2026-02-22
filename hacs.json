@@ -1,9 +1,7 @@
 {
-    "name": "Nutrislice Menus",
-    "render_readme": true,
-    "iot_class": "Cloud Polling",
-    "homeassistant": "2026.2.1",
-    "domains": [
-        "sensor"
-    ]
+  "name": "Nutrislice Menus",
+  "render_readme": true,
+  "iot_class": "Cloud Polling",
+  "homeassistant": "2026.2.1",
+  "domains": ["sensor"]
 }

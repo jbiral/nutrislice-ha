@@ -1,7 +1,7 @@
 """Constants for the Nutrislice integration."""
 
-from datetime import timedelta
 import logging
+from datetime import timedelta
 
 DOMAIN = "nutrislice"
 LOGGER = logging.getLogger(__name__)

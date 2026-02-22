@@ -1,0 +1,8 @@
+{
+    "venv": ".venv",
+    "venvPath": ".",
+    "include": [
+        "custom_components",
+        "tests"
+    ]
+}

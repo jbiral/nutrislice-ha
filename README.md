@@ -34,7 +34,7 @@ A custom integration for Home Assistant to fetch school menu data from Nutrislic
 1. Go to **Settings** > **Devices & Services**.
 2. Click **Add Integration** and search for **Nutrislice**.
 3. Enter your **District** and **School Name**.
-    - These are the parts of the Nutrislice URL: `https://mydistrict.nutrislice.com/menu/my-school-name`.
+   - These are the parts of the Nutrislice URL: `https://mydistrict.nutrislice.com/menu/my-school-name`.
 4. Select your **Meal Type** (Breakfast or Lunch).
 5. On the next screen, select the **Food Categories** you wish to track.
 
@@ -49,20 +49,20 @@ Add the following to your Lovelace configuration:
 ```yaml
 type: custom:nutrislice-card
 entity: sensor.your_school_lunch
-title: "School Menu"  # Optional
-categories:           # Optional: list categories to display
+title: 'School Menu' # Optional
+categories: # Optional: list categories to display
   - entree
   - sides
 ```
 
 ### Configuration Options
 
-| Name | Type | Requirement | Description |
-| --- | --- | --- | --- |
-| `type` | string | **Required** | `custom:nutrislice-card` |
-| `entity` | string | **Required** | The Nutrislice sensor entity (e.g., `sensor.elementary_school_lunch`) |
-| `title` | string | Optional | Header title for the card. Defaults to "School Menu". |
-| `categories` | list | Optional | List of food categories to display. Defaults to `['entree']`. |
+| Name         | Type   | Requirement  | Description                                                           |
+| ------------ | ------ | ------------ | --------------------------------------------------------------------- |
+| `type`       | string | **Required** | `custom:nutrislice-card`                                              |
+| `entity`     | string | **Required** | The Nutrislice sensor entity (e.g., `sensor.elementary_school_lunch`) |
+| `title`      | string | Optional     | Header title for the card. Defaults to "School Menu".                 |
+| `categories` | list   | Optional     | List of food categories to display. Defaults to `['entree']`.         |
 
 **Note:** The `categories` list in the card should match the ones you selected during the integration setup. Common categories include `entree`, `sides`, `fruit`, `veggies`, and `milk`.
 
@@ -73,10 +73,10 @@ You can easily send the daily menu to your phone via an automation using the `to
 **Example Automation:**
 
 ```yaml
-alias: "Send School Lunch Notification"
+alias: 'Send School Lunch Notification'
 trigger:
   - platform: time
-    at: "07:30:00"
+    at: '07:30:00'
 condition:
   - condition: template
     value_template: "{{ state_attr('sensor.elementary_school_lunch', 'today_menu') != 'No menu' }}"
@@ -95,4 +95,4 @@ If you find this integration useful, please consider sponsoring my work:
 
 ---
 
-*Disclaimer: This project is not affiliated with, authorized, maintained, sponsored or endorsed by Nutrislice, Inc or any of its affiliates or subsidiaries.*
+_Disclaimer: This project is not affiliated with, authorized, maintained, sponsored or endorsed by Nutrislice, Inc or any of its affiliates or subsidiaries._

@@ -1,30 +1,30 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "Nutrislice Menu Settings",
-                "description": "Enter your district and school name (from the nutrislice URL, e.g. for `mydistrict.nutrislice.com/menu/my-school-name`, use `mydistrict` and `my-school-name`).",
-                "data": {
-                    "district": "District (e.g. mydistrict)",
-                    "school_name": "School Name (e.g. my-school-name)",
-                    "meal_type": "Meal Type (Lunch, Breakfast)"
-                }
-            },
-            "categories": {
-                "title": "Select Food Categories",
-                "description": "Select the categories of food you want to display in the sensor.",
-                "data": {
-                    "categories": "Categories"
-                }
-            }
-        },
-        "error": {
-            "cannot_connect": "Failed to connect to Nutrislice API. Please verify your connection.",
-            "invalid_auth": "Invalid district or school name.",
-            "unknown": "Unexpected error occurred."
-        },
-        "abort": {
-            "already_configured": "This School and Meal Type is already configured."
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nutrislice Menu Settings",
+        "description": "Enter your district and school name (from the nutrislice URL, e.g. for `mydistrict.nutrislice.com/menu/my-school-name`, use `mydistrict` and `my-school-name`).",
+        "data": {
+          "district": "District (e.g. mydistrict)",
+          "school_name": "School Name (e.g. my-school-name)",
+          "meal_type": "Meal Type (Lunch, Breakfast)"
         }
+      },
+      "categories": {
+        "title": "Select Food Categories",
+        "description": "Select the categories of food you want to display in the sensor.",
+        "data": {
+          "categories": "Categories"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Nutrislice API. Please verify your connection.",
+      "invalid_auth": "Invalid district or school name.",
+      "unknown": "Unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This School and Meal Type is already configured."
     }
+  }
 }

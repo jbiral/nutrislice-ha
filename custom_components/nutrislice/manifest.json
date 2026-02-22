@@ -1,9 +1,7 @@
 {
   "domain": "nutrislice",
   "name": "Nutrislice Menus",
-  "codeowners": [
-    "@jbiral"
-  ],
+  "codeowners": ["@jbiral"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/jbiral/nutrislice-ha",
