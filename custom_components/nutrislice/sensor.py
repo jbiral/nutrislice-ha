@@ -221,8 +221,6 @@ class NutrisliceSensor(CoordinatorEntity[NutrisliceDataUpdateCoordinator], Senso
                         day_data["menu_items"].append({
                             "name": name,
                             "category": category or "other",
-                            "description": item["food"].get("description", ""),
-                            "image": item["food"].get("image_url", "")
                         })
                         day_data["has_menu"] = True
             

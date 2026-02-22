@@ -1,19 +1,14 @@
 {
   "name": "nutrislice-ha",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "directories": {
-    "test": "tests"
-  },
+  "version": "0.1.0",
+  "description": "Nutrislice Home Assistant Integration",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "pytest --asyncio-mode=auto tests/"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "puppeteer": "^24.37.5"
-  }
+  "devDependencies": {
+    "pytest": "^8.0.0",
+    "pytest-asyncio": "^0.23.5"
+  },
+  "author": "Julien Biral",
+  "license": "MIT"
 }

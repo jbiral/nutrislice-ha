@@ -329,17 +329,12 @@ class NutrisliceCard extends HTMLElement {
 
     let html = '';
     itemsToShow.forEach(item => {
-      // Clean up description (sometimes it has weird formatting from Nutrislice)
-      const desc = item.description ? item.description.replace(/<[^>]*>?/gm, '') : '';
-
       html += `
         <div class="menu-item">
           <div class="item-text">
             <div class="category-label">${item.category}</div>
             <div class="item-name">${item.name}</div>
-            ${desc ? `<div class="item-desc">${desc}</div>` : ''}
           </div>
-          ${item.image ? `<img class="item-image" src="${item.image}" alt="${item.name}">` : ''}
         </div>
       `;
     });
