@@ -6,8 +6,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_DISTRICT, CONF_MEAL_TYPE, CONF_SCHOOL_NAME, DOMAIN
+from .const import (
+    CONF_CATEGORIES,
+    CONF_DISTRICT,
+    CONF_MEAL_TYPE,
+    CONF_SCHOOL_NAME,
+    DOMAIN,
+)
 from .coordinator import NutrisliceDataUpdateCoordinator
+from .model import NutrisliceConfig
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
@@ -18,9 +25,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = NutrisliceDataUpdateCoordinator(
         hass,
-        district=entry.data[CONF_DISTRICT],
-        school_name=entry.data[CONF_SCHOOL_NAME],
-        meal_type=entry.data[CONF_MEAL_TYPE],
+        NutrisliceConfig(
+            district=entry.data[CONF_DISTRICT],
+            school_name=entry.data[CONF_SCHOOL_NAME],
+            meal_type=entry.data[CONF_MEAL_TYPE],
+            categories=entry.data[CONF_CATEGORIES],
+        ),
     )
 
     await coordinator.async_config_entry_first_refresh()

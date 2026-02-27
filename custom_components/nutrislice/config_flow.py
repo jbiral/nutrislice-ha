@@ -7,6 +7,7 @@ from typing import Any
 
 import aiohttp
 import voluptuous as vol
+
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
@@ -14,7 +15,6 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
-    CATEGORIES,
     CONF_CATEGORIES,
     CONF_DISTRICT,
     CONF_MEAL_TYPE,
@@ -23,6 +23,7 @@ from .const import (
     DEFAULT_MEAL_TYPE,
     DOMAIN,
     MEAL_TYPES,
+    CATEGORIES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -135,7 +136,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # We use a MultiSelect for easy checkbox selection in HA
         category_options = {cat: cat.title() for cat in CATEGORIES}
 
-        vol.Schema(
+        schema = vol.Schema(
             {
                 vol.Required(CONF_CATEGORIES, default=DEFAULT_CATEGORIES): vol.All(
                     cv.ensure_list, [vol.In(CATEGORIES)]

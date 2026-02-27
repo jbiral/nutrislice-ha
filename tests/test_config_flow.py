@@ -1,8 +1,8 @@
 """Test the Nutrislice config flow."""
 
+import pytest
 from unittest.mock import patch
 
-import pytest
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.core import HomeAssistant
 
@@ -23,15 +23,13 @@ async def test_form(hass: HomeAssistant) -> None:
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["errors"] == {}
 
-    with (
-        patch(
-            "custom_components.nutrislice.config_flow.aiohttp.ClientSession.get"
-        ) as mock_get,
-        patch(
-            "custom_components.nutrislice.async_setup_entry",
-            return_value=True,
-        ) as mock_setup_entry,
-    ):
+    with patch(
+        "custom_components.nutrislice.config_flow.aiohttp.ClientSession.get"
+    ) as mock_get, patch(
+        "custom_components.nutrislice.async_setup_entry",
+        return_value=True,
+    ) as mock_setup_entry:
+
         # Mock successful API response
         mock_response = mock_get.return_value.__aenter__.return_value
         mock_response.status = 200

@@ -11,7 +11,7 @@ A custom integration for Home Assistant to fetch school menu data from Nutrislic
 - Supports multiple schools and meal types.
 - Provides a detailed 3-week window of menu data.
 - Configurable food categories (Entrees, Sides, Fruit, etc.).
-- Custom [Nutrislice Card](https://github.com/jbiral/lovelace-nutrislice-card) for an elegant display.
+- Compatible with the custom [Nutrislice Card](https://github.com/jbiral/lovelace-nutrislice-card) for an elegant display.
 
 ## Installation
 

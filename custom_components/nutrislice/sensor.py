@@ -118,7 +118,7 @@ class NutrisliceSensor(
         """Get items for a specific category using flexible matching."""
         allowed_aliases = [category]
         if category == "sides":
-            allowed_aliases.extend(["vegetable", "fruit", "gain"])
+            allowed_aliases.extend(["vegetable", "fruit", "grain"])
 
         foods = []
         for item in day.get("menu_items", []):

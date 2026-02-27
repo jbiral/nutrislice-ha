@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, SCAN_INTERVAL
+from .model import NutrisliceConfig
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,13 +21,9 @@ class NutrisliceDataUpdateCoordinator(DataUpdateCoordinator):
     frontend Lovelace card.
     """
 
-    def __init__(
-        self, hass: HomeAssistant, district: str, school_name: str, meal_type: str
-    ) -> None:
+    def __init__(self, hass: HomeAssistant, config: NutrisliceConfig) -> None:
         """Initialize."""
-        self.district = district
-        self.school_name = school_name
-        self.meal_type = meal_type
+        self.config = config
 
         super().__init__(
             hass,
@@ -48,7 +45,7 @@ class NutrisliceDataUpdateCoordinator(DataUpdateCoordinator):
 
             async with aiohttp.ClientSession() as session:
                 # Fetch previous week
-                url_prev = f"https://{self.district}.api.nutrislice.com/menu/api/weeks/school/{self.school_name}/menu-type/{self.meal_type}/{prev_week.strftime('%Y/%m/%d')}/?format=json"
+                url_prev = f"https://{self.config.district}.api.nutrislice.com/menu/api/weeks/school/{self.config.school_name}/menu-type/{self.config.meal_type}/{prev_week.strftime('%Y/%m/%d')}/?format=json"
                 async with session.get(url_prev, timeout=10) as response:
                     if response.status == 200:
                         data["previous_week"] = await response.json()
@@ -56,7 +53,7 @@ class NutrisliceDataUpdateCoordinator(DataUpdateCoordinator):
                         data["previous_week"] = None
 
                 # Fetch current week
-                url_current = f"https://{self.district}.api.nutrislice.com/menu/api/weeks/school/{self.school_name}/menu-type/{self.meal_type}/{today.strftime('%Y/%m/%d')}/?format=json"
+                url_current = f"https://{self.config.district}.api.nutrislice.com/menu/api/weeks/school/{self.config.school_name}/menu-type/{self.config.meal_type}/{today.strftime('%Y/%m/%d')}/?format=json"
                 async with session.get(url_current, timeout=10) as response:
                     if response.status != 200:
                         raise UpdateFailed(
@@ -66,7 +63,7 @@ class NutrisliceDataUpdateCoordinator(DataUpdateCoordinator):
                     data["current_week"] = current_week
 
                 # Fetch next week
-                url_next = f"https://{self.district}.api.nutrislice.com/menu/api/weeks/school/{self.school_name}/menu-type/{self.meal_type}/{next_week.strftime('%Y/%m/%d')}/?format=json"
+                url_next = f"https://{self.config.district}.api.nutrislice.com/menu/api/weeks/school/{self.config.school_name}/menu-type/{self.config.meal_type}/{next_week.strftime('%Y/%m/%d')}/?format=json"
                 async with session.get(url_next, timeout=10) as response:
                     if response.status == 200:
                         next_week_data = await response.json()
