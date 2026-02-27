@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -23,6 +23,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import NutrisliceDataUpdateCoordinator
+from .model import NutrisliceConfig, Day, MenuItem, Category
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,24 +35,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up the sensor platform from a config entry."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
-
-    async_add_entities(
-        [
-            NutrisliceSensor(
-                coordinator,
-                entry,
-            )
-        ]
-    )
+    async_add_entities([NutrisliceSensor(coordinator, entry)])
 
     platform = entity_platform.async_get_current_platform()
-
-    # Register the set_date service for the sensor
     platform.async_register_entity_service(
         "set_date",
-        {
-            vol.Required("date"): str,
-        },
+        {vol.Required("date"): str},
         "set_target_date",
     )
 
@@ -74,200 +63,149 @@ class NutrisliceSensor(
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.entry = entry
-        self.district = entry.data[CONF_DISTRICT]
-        self.school_name = entry.data[CONF_SCHOOL_NAME]
-        self.meal_type = entry.data[CONF_MEAL_TYPE]
-        self.categories = entry.data.get(CONF_CATEGORIES, DEFAULT_CATEGORIES)
+        self.config = NutrisliceConfig(
+            district=entry.data[CONF_DISTRICT],
+            school_name=entry.data[CONF_SCHOOL_NAME],
+            meal_type=entry.data[CONF_MEAL_TYPE],
+            categories=entry.data[CONF_CATEGORIES],
+        )
 
-        self._attr_name = (
-            f"{self.school_name.replace('-', ' ').title()} {self.meal_type.title()}"
-        )
-        self._attr_unique_id = (
-            f"nutrislice_{self.district}_{self.school_name}_{self.meal_type}"
-        )
+        self._attr_name = f"{self.config.school_name.replace('-', ' ').title()} {self.config.meal_type.title()}"
+        self._attr_unique_id = f"nutrislice_{self.config.district}_{self.config.school_name}_{self.config.meal_type}"
         self._attr_icon = "mdi:food-apple"
-        self._target_date: str | None = None
+        self._target_date: date | None = None
 
-    async def set_target_date(self, date: str) -> None:
-        """Handle the service call to set the target date for this sensor."""
-        if date.lower() == "today":
-            self._target_date = datetime.now().strftime("%Y-%m-%d")
-        elif date.lower() == "tomorrow":
-            self._target_date = (datetime.now() + timedelta(days=1)).strftime(
-                "%Y-%m-%d"
-            )
+    async def set_target_date(self, date_str: str) -> None:
+        """Handle the service call to set the target date."""
+        today = date.today()
+        if date_str.lower() == "today":
+            self._target_date = today
+        elif date_str.lower() == "tomorrow":
+            self._target_date = today + timedelta(days=1)
         else:
-            self._target_date = date
+            try:
+                self._target_date = date.fromisoformat(date_str)
+            except ValueError:
+                _LOGGER.error("Invalid date format: %s. Use YYYY-MM-DD", date_str)
+                return
 
         self.async_write_ha_state()
 
     @property
-    def _target_date_str(self) -> str:
-        """Return the target date as a string."""
+    def _active_date(self) -> date:
+        """Determine the date currently being displayed by the sensor."""
         if self._target_date:
             return self._target_date
 
         now = datetime.now()
+        # After 1 PM, switch to showing tomorrow's menu
         if now.hour >= 13:
-            return (now + timedelta(days=1)).strftime("%Y-%m-%d")
-        return now.strftime("%Y-%m-%d")
+            return now.date() + timedelta(days=1)
+        return now.date()
 
-    def _get_items_for_category(
-        self, day: dict[str, Any], category: str
-    ) -> list[dict[str, Any]]:
-        """Get items for a specific category using flexible matching."""
-        allowed_aliases = [category]
-        if category == "sides":
-            allowed_aliases.extend(["vegetable", "fruit", "grain"])
+    def _get_all_days(self) -> list[Day]:
+        """Collect and deduplicate days from the coordinator's Pydantic objects."""
+        if not self.coordinator.data:
+            return []
 
-        foods = []
-        for item in day.get("menu_items", []):
-            if not item.get("food"):
+        unique_days: dict[date, Day] = {}
+        for week in self.coordinator.data.values():
+            if week is None:
                 continue
+            for day in week.days:
+                if day.date not in unique_days:
+                    unique_days[day.date] = day
 
-            item_cat = item.get("category")
-            if not item_cat and item.get("food"):
-                item_cat = item["food"].get("food_category")
+        return [unique_days[d] for d in sorted(unique_days.keys())]
 
-            cat = (item_cat or "").lower()
-            if not cat:
-                continue
+    def _get_items_for_category(self, day: Day, target_cat: str) -> list[MenuItem]:
+        """Filter menu items based on category using the Pydantic Enum."""
+        # Map the string from config to the Pydantic Enum
+        try:
+            enum_cat = Category(target_cat.lower())
+        except ValueError:
+            return []
 
-            if any(cat.startswith(a) or a.startswith(cat) for a in allowed_aliases):
-                foods.append(item)
-        return foods
+        return [
+            item
+            for item in day.menu_items
+            if item.food and item.food.food_category == enum_cat
+        ]
 
     @property
-    def native_value(self) -> str:
-        """Return the state of the sensor.
-
-        Shows the number of available items for the first selected category.
-        """
+    def native_value(self) -> str | None:
+        """Return the state of the sensor (e.g., '2 Entrees Available' or 'Presidents Day')."""
         if not self.coordinator.data:
-            return "unavailable"
+            return None
 
-        target_str = self._target_date_str
-        main_cat = self.categories[0] if self.categories else "entree"
+        target = self._active_date
+        main_cat = self.config.categories[0] if self.config.categories else "entree"
 
         for day in self._get_all_days():
-            if day.get("date") == target_str:
-                # Check if it's a holiday
-                for item in day.get("menu_items", []):
-                    if item.get("is_holiday"):
-                        return item.get("text", "Holiday")
+            if day.date == target:
+                # 1. Check for Holiday
+                holiday = next((i.text for i in day.menu_items if i.is_holiday), None)
+                if holiday:
+                    return holiday
 
-                foods = self._get_items_for_category(day, main_cat)
-                if foods:
-                    return f"{len(foods)} {main_cat.title()}s Available"
+                # 2. Count specific categories
+                items = self._get_items_for_category(day, main_cat)
+                if items:
+                    return f"{len(items)} {main_cat.title()}s Available"
+
                 return f"No {main_cat.title()}s/Weekend"
 
         return "unknown"
 
-    def _get_all_days(self) -> list[dict[str, Any]]:
-        """Get a deduplicated and sorted list of all days from the coordinator."""
-        if not self.coordinator.data:
-            return []
+    def _format_day_for_attrs(self, day: Day) -> dict[str, Any]:
+        """Convert a Day model into a dictionary for extra_state_attributes."""
+        holiday_item = next((i for i in day.menu_items if i.is_holiday), None)
 
-        all_days_raw = []
-        if self.coordinator.data.get("previous_week"):
-            all_days_raw.extend(self.coordinator.data["previous_week"].get("days", []))
-        if self.coordinator.data.get("current_week"):
-            all_days_raw.extend(self.coordinator.data["current_week"].get("days", []))
-        if self.coordinator.data.get("next_week"):
-            all_days_raw.extend(self.coordinator.data["next_week"].get("days", []))
+        menu_items = [
+            {"name": i.food.name, "category": i.food.food_category.value}
+            for i in day.menu_items
+            if i.food
+        ]
 
-        # Deduplicate by date and sort
-        unique_days = {}
-        for day in all_days_raw:
-            date_str = day.get("date")
-            if date_str and date_str not in unique_days:
-                unique_days[date_str] = day
-
-        return [unique_days[d] for d in sorted(unique_days.keys())]
-
-    def _parse_day_data(self, day: dict[str, Any]) -> dict[str, Any]:
-        """Parse raw day data into a structured format for the frontend."""
-        date_str = day.get("date")
-        if not date_str:
-            return {}
-
-        day_data = {
-            "date": date_str,
-            "is_holiday": False,
-            "holiday_name": None,
-            "menu_items": [],
-            "has_menu": False,
+        return {
+            "date": day.date.isoformat(),
+            "is_holiday": holiday_item is not None,
+            "holiday_name": holiday_item.text if holiday_item else None,
+            "menu_items": menu_items,
+            "has_menu": len(menu_items) > 0,
+            "menu_summary": (
+                holiday_item.text
+                if holiday_item
+                else (
+                    ", ".join(i["name"] for i in menu_items)
+                    if menu_items
+                    else "No menu"
+                )
+            ),
         }
-
-        for item in day.get("menu_items", []):
-            if item.get("is_holiday"):
-                day_data["is_holiday"] = True
-                day_data["holiday_name"] = item.get("text", "Holiday")
-                break
-
-            category = item.get("category")
-            if not category and item.get("food"):
-                category = item["food"].get("food_category")
-
-            if category:
-                category = category.lower()
-
-            if item.get("food"):
-                name = item["food"].get("name", "").strip()
-                if name and name != "Menu Subject to Change":
-                    day_data["menu_items"].append(
-                        {
-                            "name": name,
-                            "category": category or "other",
-                        }
-                    )
-                    day_data["has_menu"] = True
-
-        if day_data["is_holiday"]:
-            day_data["menu_summary"] = day_data["holiday_name"]
-        elif day_data["menu_items"]:
-            day_data["menu_summary"] = ", ".join(
-                [item["name"] for item in day_data["menu_items"]]
-            )
-        else:
-            day_data["menu_summary"] = "No menu"
-
-        return day_data
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return the state attributes."""
-        if not self.coordinator.data:
-            return {}
+        """Return the state attributes using Pydantic-processed data."""
+        days = self._get_all_days()
+        parsed_days = [self._format_day_for_attrs(d) for d in days]
 
-        parsed_days = []
-        for day in self._get_all_days():
-            day_data = self._parse_day_data(day)
-            if day_data:
-                parsed_days.append(day_data)
+        today_str = date.today().isoformat()
+        tomorrow_str = (date.today() + timedelta(days=1)).isoformat()
 
-        target_str = self._target_date_str
-
-        today_str_abs = datetime.now().strftime("%Y-%m-%d")
-        tomorrow_str_abs = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-
-        today_menu = next(
-            (d["menu_summary"] for d in parsed_days if d["date"] == today_str_abs),
-            "No menu",
-        )
-        tomorrow_menu = next(
-            (d["menu_summary"] for d in parsed_days if d["date"] == tomorrow_str_abs),
-            "No menu",
-        )
+        def find_summary(d_str: str) -> str:
+            return next(
+                (d["menu_summary"] for d in parsed_days if d["date"] == d_str),
+                "No menu",
+            )
 
         return {
-            "get_target_date": target_str,  # Keep for existing logic if any
-            "target_date": target_str,
-            "district": self.district,
-            "school_name": self.school_name,
-            "meal_type": self.meal_type,
-            "categories": self.categories,
-            "today_menu": today_menu,
-            "tomorrow_menu": tomorrow_menu,
+            "target_date": self._active_date.isoformat(),
+            "district": self.config.district,
+            "school_name": self.config.school_name,
+            "meal_type": self.config.meal_type,
+            "categories": self.config.categories,
+            "today_menu": find_summary(today_str),
+            "tomorrow_menu": find_summary(tomorrow_str),
             "days": parsed_days,
         }

@@ -14,7 +14,9 @@ from homeassistant.helpers import entity_registry
 from homeassistant.helpers.entity_component import async_update_entity
 
 
-async def test_sensor_state_and_attributes(hass, freezer, mock_nutrislice_data):
+async def test_sensor_state_and_attributes(
+    hass, freezer, mock_nutrislice_data_validated
+):
     """Test the sensor parses data correctly."""
 
     freezer.move_to("2026-02-17")
@@ -22,7 +24,7 @@ async def test_sensor_state_and_attributes(hass, freezer, mock_nutrislice_data):
     with patch(
         "custom_components.nutrislice.coordinator.NutrisliceDataUpdateCoordinator._async_update_data",
         new_callable=AsyncMock,
-        return_value=mock_nutrislice_data,
+        return_value=mock_nutrislice_data_validated,
     ):
         mock_entry = MockConfigEntry(
             domain="nutrislice",
