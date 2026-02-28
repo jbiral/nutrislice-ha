@@ -75,18 +75,21 @@ class NutrisliceSensor(
         self._attr_icon = "mdi:food-apple"
         self._target_date: date | None = None
 
-    async def set_target_date(self, date_str: str) -> None:
+    async def set_target_date(self, date: str) -> None:
         """Handle the service call to set the target date."""
-        today = date.today()
-        if date_str.lower() == "today":
+        # Use datetime.date because 'date' is shadowed by the argument name
+        from datetime import date as dt_date
+
+        today = dt_date.today()
+        if date.lower() == "today":
             self._target_date = today
-        elif date_str.lower() == "tomorrow":
+        elif date.lower() == "tomorrow":
             self._target_date = today + timedelta(days=1)
         else:
             try:
-                self._target_date = date.fromisoformat(date_str)
+                self._target_date = dt_date.fromisoformat(date)
             except ValueError:
-                _LOGGER.error("Invalid date format: %s. Use YYYY-MM-DD", date_str)
+                _LOGGER.error("Invalid date format: %s. Use YYYY-MM-DD", date)
                 return
 
         self.async_write_ha_state()

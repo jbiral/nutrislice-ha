@@ -84,3 +84,53 @@ async def test_sensor_state_and_attributes(
         state = hass.states.get("sensor.elementary_school_lunch")
 
         assert state.state == "unknown"
+
+
+async def test_set_date_service(hass, freezer, mock_nutrislice_data_validated):
+    """Test the set_date service updates the sensor's target date."""
+    freezer.move_to("2026-02-17")
+
+    with patch(
+        "custom_components.nutrislice.coordinator.NutrisliceDataUpdateCoordinator._async_update_data",
+        new_callable=AsyncMock,
+        return_value=mock_nutrislice_data_validated,
+    ):
+        mock_entry = MockConfigEntry(
+            domain="nutrislice",
+            data={
+                "district": "my-district",
+                "school_name": "elementary-school",
+                "meal_type": "lunch",
+                "categories": ["entree"],
+            },
+            entry_id="test_set_date",
+        )
+        mock_entry.add_to_hass(hass)
+
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initial state (2026-02-17)
+        state = hass.states.get("sensor.elementary_school_lunch")
+        assert state.attributes.get("target_date") == "2026-02-17"
+
+        # Call service to set date to tomorrow
+        await hass.services.async_call(
+            "nutrislice",
+            "set_date",
+            {"entity_id": "sensor.elementary_school_lunch", "date": "tomorrow"},
+            blocking=True,
+        )
+        state = hass.states.get("sensor.elementary_school_lunch")
+        assert state.attributes.get("target_date") == "2026-02-18"
+
+        # Call service with specific date
+        await hass.services.async_call(
+            "nutrislice",
+            "set_date",
+            {"entity_id": "sensor.elementary_school_lunch", "date": "2026-02-16"},
+            blocking=True,
+        )
+        state = hass.states.get("sensor.elementary_school_lunch")
+        assert state.attributes.get("target_date") == "2026-02-16"
+        assert state.state == "Presidents Day"
