@@ -109,8 +109,8 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {
-                CONF_DISTRICT: "unionsd",
-                CONF_SCHOOL_NAME: "lietz-elementary",
+                CONF_DISTRICT: "some-district",
+                CONF_SCHOOL_NAME: "some-school",
                 CONF_MEAL_TYPE: "lunch",
             },
         )

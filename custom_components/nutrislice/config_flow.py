@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     CONF_CATEGORIES,
@@ -49,28 +50,24 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     # Use a dummy date to validate the API connection
     url = f"https://{district}.api.nutrislice.com/menu/api/weeks/school/{school_name}/menu-type/{meal_type}/2023/01/01/?format=json"
 
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, timeout=10) as response:
-                if response.status != 200:
-                    _LOGGER.error(
-                        "Failed to fetch Nutrislice data: %s", response.status
-                    )
-                    raise InvalidAuth(
-                        f"Could not connect to Nutrislice API ({response.status}). Check District/School Name."
-                    )
-                json_data = await response.json()
-                if not json_data.get("days"):
-                    raise InvalidAuth(
-                        "Invalid data received. Check District/School Name."
-                    )
-        except (InvalidAuth, CannotConnect):
-            raise
-        except aiohttp.ClientError as err:
-            raise CannotConnect from err
-        except Exception as err:
-            _LOGGER.exception("Unexpected error during validation")
-            raise CannotConnect from err
+    session = async_get_clientsession(hass)
+    try:
+        async with session.get(url, timeout=10) as response:
+            if response.status != 200:
+                _LOGGER.error("Failed to fetch Nutrislice data: %s", response.status)
+                raise InvalidAuth(
+                    f"Could not connect to Nutrislice API ({response.status}). Check District/School Name."
+                )
+            json_data = await response.json()
+            if not json_data.get("days"):
+                raise InvalidAuth("Invalid data received. Check District/School Name.")
+    except (InvalidAuth, CannotConnect):
+        raise
+    except aiohttp.ClientError as err:
+        raise CannotConnect from err
+    except Exception as err:
+        _LOGGER.exception("Unexpected error during validation")
+        raise CannotConnect from err
 
     # Return info that you want to store in the config entry.
     return {

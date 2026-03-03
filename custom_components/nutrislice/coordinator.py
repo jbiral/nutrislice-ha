@@ -1,5 +1,6 @@
 """Data update coordinator for Nutrislice."""
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 
@@ -33,6 +34,35 @@ class NutrisliceDataUpdateCoordinator(
             update_interval=SCAN_INTERVAL,
         )
 
+    async def _fetch_week(
+        self, session, key: str, week_date: datetime
+    ) -> tuple[str, NutrisliceResponse | None]:
+        url = (
+            f"https://{self.config.district}.api.nutrislice.com/menu/api/weeks/"
+            f"school/{self.config.school_name}/menu-type/{self.config.meal_type}/"
+            f"{week_date.strftime('%Y/%m/%d')}/?format=json"
+        )
+        try:
+            async with session.get(url, timeout=10) as response:
+                if response.status == 200:
+                    raw_json = await response.json()
+                    return key, NutrisliceResponse.model_validate(raw_json)
+                if key == "current_week":
+                    raise UpdateFailed(
+                        f"Error fetching current week: {response.status}"
+                    )
+                _LOGGER.debug("Could not fetch %s: %s", key, response.status)
+                return key, None
+        except UpdateFailed:
+            raise
+        except Exception as err:
+            if key == "current_week":
+                raise UpdateFailed(
+                    f"Error communicating with API for current week: {err}"
+                ) from err
+            _LOGGER.debug("Error fetching %s: %s", key, err)
+            return key, None
+
     async def _async_update_data(self) -> dict[str, NutrisliceResponse | None]:
         """Update data via API."""
         session = async_get_clientsession(self.hass)
@@ -45,32 +75,13 @@ class NutrisliceDataUpdateCoordinator(
             "next_week": today + timedelta(days=7),
         }
 
-        data: dict[str, NutrisliceResponse | None] = {}
+        tasks = [
+            self._fetch_week(session, key, week_date)
+            for key, week_date in weeks_to_fetch.items()
+        ]
 
         try:
-            for key, week_date in weeks_to_fetch.items():
-                url = (
-                    f"https://{self.config.district}.api.nutrislice.com/menu/api/weeks/"
-                    f"school/{self.config.school_name}/menu-type/{self.config.meal_type}/"
-                    f"{week_date.strftime('%Y/%m/%d')}/?format=json"
-                )
-
-                async with session.get(url, timeout=10) as response:
-                    if response.status == 200:
-                        raw_json = await response.json()
-                        # Validate raw JSON into the Pydantic model
-                        data[key] = NutrisliceResponse.model_validate(raw_json)
-                    elif key == "current_week":
-                        # We treat a failure for the current week as a hard error
-                        raise UpdateFailed(
-                            f"Error fetching current week: {response.status}"
-                        )
-                    else:
-                        # Previous/Next week might not exist; we degrade gracefully
-                        _LOGGER.debug("Could not fetch %s: %s", key, response.status)
-                        data[key] = None
-
-            return data
-
+            results = await asyncio.gather(*tasks)
+            return dict(results)
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err

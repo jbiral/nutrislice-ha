@@ -6,13 +6,13 @@ import logging
 from datetime import datetime, date, timedelta
 from typing import Any
 
-import voluptuous as vol
+
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import (
     CONF_CATEGORIES,
@@ -37,13 +37,6 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([NutrisliceSensor(coordinator, entry)])
 
-    platform = entity_platform.async_get_current_platform()
-    platform.async_register_entity_service(
-        "set_date",
-        {vol.Required("date"): str},
-        "set_target_date",
-    )
-
 
 class NutrisliceSensor(
     CoordinatorEntity[NutrisliceDataUpdateCoordinator], SensorEntity
@@ -54,6 +47,8 @@ class NutrisliceSensor(
     The primary state reflects the number of items in the first selected category (usually 'entree').
     Detailed menu information is available in the extra state attributes.
     """
+
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -70,41 +65,24 @@ class NutrisliceSensor(
             categories=entry.data[CONF_CATEGORIES],
         )
 
-        self._attr_name = f"{self.config.school_name.replace('-', ' ').title()} {self.config.meal_type.title()}"
+        self._attr_name = None
         self._attr_unique_id = f"nutrislice_{self.config.district}_{self.config.school_name}_{self.config.meal_type}"
         self._attr_icon = "mdi:food-apple"
-        self._target_date: date | None = None
 
-    async def set_target_date(self, date: str) -> None:
-        """Handle the service call to set the target date."""
-        # Use datetime.date because 'date' is shadowed by the argument name
-        from datetime import date as dt_date
-
-        today = dt_date.today()
-        if date.lower() == "today":
-            self._target_date = today
-        elif date.lower() == "tomorrow":
-            self._target_date = today + timedelta(days=1)
-        else:
-            try:
-                self._target_date = dt_date.fromisoformat(date)
-            except ValueError:
-                _LOGGER.error("Invalid date format: %s. Use YYYY-MM-DD", date)
-                return
-
-        self.async_write_ha_state()
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information about this Nutrislice instance."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._attr_unique_id)},
+            name=f"{self.config.school_name.replace('-', ' ').title()} {self.config.meal_type.title()}",
+            manufacturer="Nutrislice",
+            model="School Menu",
+        )
 
     @property
     def _active_date(self) -> date:
-        """Determine the date currently being displayed by the sensor."""
-        if self._target_date:
-            return self._target_date
-
-        now = datetime.now()
-        # After 1 PM, switch to showing tomorrow's menu
-        if now.hour >= 13:
-            return now.date() + timedelta(days=1)
-        return now.date()
+        """Determine the date currently being displayed by the sensor (always today)."""
+        return date.today()
 
     def _get_all_days(self) -> list[Day]:
         """Collect and deduplicate days from the coordinator's Pydantic objects."""
@@ -203,7 +181,7 @@ class NutrisliceSensor(
             )
 
         return {
-            "target_date": self._active_date.isoformat(),
+            "current_date": self._active_date.isoformat(),
             "district": self.config.district,
             "school_name": self.config.school_name,
             "meal_type": self.config.meal_type,
