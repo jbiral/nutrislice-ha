@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 import pytest
-import json
+
 from custom_components.nutrislice.model import NutrisliceResponse
 
 pytest_plugins = "pytest_homeassistant_custom_component"

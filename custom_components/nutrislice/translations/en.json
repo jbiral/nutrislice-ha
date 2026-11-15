@@ -12,7 +12,7 @@
       },
       "categories": {
         "title": "Select Food Categories",
-        "description": "Select the categories of food you want to display in the sensor.",
+        "description": "Select the categories of food you want to display in the sensor and calendar.",
         "data": {
           "categories": "Categories"
         }
@@ -25,6 +25,17 @@
     },
     "abort": {
       "already_configured": "This School and Meal Type is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update Food Categories",
+        "description": "Select the categories of food you want to display in the sensor and calendar.",
+        "data": {
+          "categories": "Categories"
+        }
+      }
     }
   }
 }

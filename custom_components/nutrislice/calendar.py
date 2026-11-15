@@ -1,4 +1,4 @@
-"""Calendar platform for nutrislice."""
+"""Calendar platform for Nutrislice."""
 
 from __future__ import annotations
 
@@ -8,13 +8,14 @@ from datetime import datetime, timedelta
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import NutrisliceDataUpdateCoordinator
-from .model import NutrisliceConfig, Day
+from .model import Day
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the calendar platform from a config entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: NutrisliceDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([NutrisliceCalendar(coordinator, entry)])
 
 
@@ -47,23 +48,14 @@ class NutrisliceCalendar(
         super().__init__(coordinator)
         self.entry = entry
         self.config = coordinator.config
-
-        self._attr_unique_id = (
-            f"nutrislice_{self.config.district}_{self.config.school_name}_"
-            f"{self.config.meal_type}_calendar"
-        )
+        self._attr_unique_id = f"{self.config.unique_id}_calendar"
 
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information about this Nutrislice instance."""
         return DeviceInfo(
-            identifiers={
-                (
-                    DOMAIN,
-                    f"nutrislice_{self.config.district}_{self.config.school_name}_{self.config.meal_type}",
-                )
-            },
-            name=f"{self.config.school_name.replace('-', ' ').title()} {self.config.meal_type.title()}",
+            identifiers={(DOMAIN, self.config.unique_id)},
+            name=self.config.device_name,
             manufacturer="Nutrislice",
             model="School Menu",
         )
@@ -73,31 +65,35 @@ class NutrisliceCalendar(
         if not day.menu_items:
             return None
 
-        # Check for holiday
-        holiday = next((i for i in day.menu_items if i.is_holiday), None)
-        if holiday:
+        if day.is_holiday:
             return CalendarEvent(
-                summary=f"Holiday: {holiday.text}",
+                summary=f"Holiday: {day.holiday_name}",
                 start=day.date,
                 end=day.date + timedelta(days=1),
                 description="No school meal service.",
             )
 
-        # Build description from valid foods
-        foods = [i.food for i in day.menu_items if i.food]
-        if not foods:
+        valid_items = day.valid_menu_items
+        if not valid_items:
             return None
 
+        categories = sorted(
+            {item.effective_category or "other" for item in valid_items}
+        )
         description_lines = []
-        for category in sorted(list(set(f.food_category.value for f in foods))):
-            items_in_cat = [f.name for f in foods if f.food_category.value == category]
+        for category in categories:
+            items_in_cat = [
+                item.food.name
+                for item in valid_items
+                if item.food and (item.effective_category or "other") == category
+            ]
             if items_in_cat:
                 description_lines.append(
                     f"{category.title()}: {', '.join(items_in_cat)}"
                 )
 
         return CalendarEvent(
-            summary=f"Menu: {len(foods)} items",
+            summary=f"Menu: {len(valid_items)} items",
             start=day.date,
             end=day.date + timedelta(days=1),
             description="\n".join(description_lines),
@@ -109,15 +105,11 @@ class NutrisliceCalendar(
         if not self.coordinator.data:
             return None
 
-        today = datetime.now().date()
-        for week in self.coordinator.data.values():
-            if not week:
-                continue
-            for day in week.days:
-                if day.date >= today:
-                    event = self._day_to_event(day)
-                    if event:
-                        return event
+        today = dt_util.now().date()
+        for day in self.coordinator.get_all_days():
+            if day.date >= today:
+                if event := self._day_to_event(day):
+                    return event
         return None
 
     async def async_get_events(
@@ -127,17 +119,13 @@ class NutrisliceCalendar(
         if not self.coordinator.data:
             return []
 
-        events = []
+        events: list[CalendarEvent] = []
         start_d = start_date.date()
         end_d = end_date.date()
 
-        for week in self.coordinator.data.values():
-            if not week:
-                continue
-            for day in week.days:
-                if start_d <= day.date <= end_d:
-                    event = self._day_to_event(day)
-                    if event:
-                        events.append(event)
+        for day in self.coordinator.get_all_days():
+            if start_d <= day.date <= end_d:
+                if event := self._day_to_event(day):
+                    events.append(event)
 
         return events

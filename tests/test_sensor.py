@@ -1,25 +1,19 @@
-"""Test the Nutrislice sensor."""
+"""Test the Nutrislice Today and Tomorrow sensors."""
 
-from unittest.mock import patch
+from __future__ import annotations
 
-import pytest
-from homeassistant.core import HomeAssistant
+import json
+from unittest.mock import AsyncMock, patch
 
-from custom_components.nutrislice.sensor import NutrisliceSensor
-from custom_components.nutrislice.coordinator import NutrisliceDataUpdateCoordinator
-from custom_components.nutrislice.model import NutrisliceConfig
-from unittest.mock import patch, AsyncMock
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 from homeassistant.helpers import entity_registry
 from homeassistant.helpers.entity_component import async_update_entity
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
-async def test_sensor_state_and_attributes(
-    hass, freezer, mock_nutrislice_data_validated
-):
-    """Test the sensor parses data correctly."""
-
-    freezer.move_to("2026-02-17")
+async def test_sensor_today_and_tomorrow(hass, freezer, mock_nutrislice_data_validated):
+    """Test Today and Tomorrow sensors parse state and attributes properly."""
+    # Start on Sunday 2026-02-15 (Tomorrow is Presidents Day 2026-02-16)
+    freezer.move_to("2026-02-15 10:00:00")
 
     with patch(
         "custom_components.nutrislice.coordinator.NutrisliceDataUpdateCoordinator._async_update_data",
@@ -41,47 +35,66 @@ async def test_sensor_state_and_attributes(
         await hass.config_entries.async_setup(mock_entry.entry_id)
         await hass.async_block_till_done()
 
-        # Test sensor was registered properly
-        state = hass.states.get("sensor.elementary_school_lunch")
-        assert state is not None
+        ent_reg = entity_registry.async_get(hass)
 
-        # Verify sensor unique id
-        entry = entity_registry.async_get(hass).async_get(
-            "sensor.elementary_school_lunch"
+        today_entry = ent_reg.async_get("sensor.elementary_school_lunch_today")
+        tomorrow_entry = ent_reg.async_get("sensor.elementary_school_lunch_tomorrow")
+        assert today_entry is not None
+        assert tomorrow_entry is not None
+        assert (
+            today_entry.unique_id
+            == "nutrislice_my-district_elementary-school_lunch_today"
         )
-        assert entry.unique_id == "nutrislice_my-district_elementary-school_lunch"
+        assert (
+            tomorrow_entry.unique_id
+            == "nutrislice_my-district_elementary-school_lunch_tomorrow"
+        )
 
-        # Verify sensor state and attributes
-        assert state.state == "2 Entrees Available"
-        assert state.attributes.get("friendly_name") == "Elementary School Lunch"
-        assert state.attributes.get("district") == "my-district"
-        assert state.attributes.get("school_name") == "elementary-school"
-        assert state.attributes.get("meal_type") == "lunch"
-        assert state.attributes.get("categories") == ["entree", "fruit"]
-        assert state.attributes.get("current_date") == "2026-02-17"
+        # On 2026-02-15: Today has no menu, Tomorrow (2026-02-16) is Presidents Day
+        today_state = hass.states.get("sensor.elementary_school_lunch_today")
+        tomorrow_state = hass.states.get("sensor.elementary_school_lunch_tomorrow")
 
-        assert state.attributes.get("days")[0]["date"] == "2026-02-16"
-        assert state.attributes.get("days")[0]["is_holiday"] is True
-        assert state.attributes.get("days")[0]["holiday_name"] == "Presidents Day"
-        assert state.attributes.get("days")[1]["date"] == "2026-02-17"
+        assert today_state.state == "No menu"
+        assert today_state.attributes.get("date") == "2026-02-15"
+        assert today_state.attributes.get("is_holiday") is False
+        assert today_state.attributes.get("items_by_category") == {}
 
-        assert state.attributes.get("days")[1]["date"] == "2026-02-17"
-        assert state.attributes.get("days")[1]["is_holiday"] is False
-        assert state.attributes.get("days")[1]["has_menu"] is True
-        assert len(state.attributes.get("days")[1]["menu_items"]) == 3
-        assert state.attributes.get("days")[1]["menu_items"][0]["name"] == "Pizza"
-        assert state.attributes.get("days")[1]["menu_items"][0]["category"] == "entree"
-        assert state.attributes.get("days")[1]["menu_items"][2]["name"] == "Apple"
-        assert state.attributes.get("days")[1]["menu_items"][2]["category"] == "fruit"
+        assert tomorrow_state.state == "Presidents Day"
+        assert tomorrow_state.attributes.get("date") == "2026-02-16"
+        assert tomorrow_state.attributes.get("is_holiday") is True
+        assert tomorrow_state.attributes.get("holiday_name") == "Presidents Day"
 
-        freezer.move_to("2026-02-16")
-        await async_update_entity(hass, "sensor.elementary_school_lunch")
-        state = hass.states.get("sensor.elementary_school_lunch")
+        # Move to Monday 2026-02-16 (Holiday): Today is Presidents Day, Tomorrow (2026-02-17) has Pizza, Burger
+        freezer.move_to("2026-02-16 10:00:00")
+        await async_update_entity(hass, "sensor.elementary_school_lunch_today")
+        await async_update_entity(hass, "sensor.elementary_school_lunch_tomorrow")
 
-        assert state.state == "Presidents Day"
+        today_state = hass.states.get("sensor.elementary_school_lunch_today")
+        tomorrow_state = hass.states.get("sensor.elementary_school_lunch_tomorrow")
 
-        freezer.move_to("2026-02-15")
-        await async_update_entity(hass, "sensor.elementary_school_lunch")
-        state = hass.states.get("sensor.elementary_school_lunch")
+        assert today_state.state == "Presidents Day"
+        assert tomorrow_state.state == "Pizza, Burger"
+        assert tomorrow_state.attributes.get("date") == "2026-02-17"
+        assert tomorrow_state.attributes.get("menu_summary") == "Pizza, Burger, Apple"
+        assert tomorrow_state.attributes.get("items_by_category") == {
+            "entree": ["Pizza", "Burger"],
+            "fruit": ["Apple"],
+        }
 
-        assert state.state == "unknown"
+        # Move to Tuesday 2026-02-17: Today has Pizza, Burger; Tomorrow has No menu
+        freezer.move_to("2026-02-17 10:00:00")
+        await async_update_entity(hass, "sensor.elementary_school_lunch_today")
+        await async_update_entity(hass, "sensor.elementary_school_lunch_tomorrow")
+
+        today_state = hass.states.get("sensor.elementary_school_lunch_today")
+        tomorrow_state = hass.states.get("sensor.elementary_school_lunch_tomorrow")
+
+        assert today_state.state == "Pizza, Burger"
+        assert today_state.attributes.get("items_by_category") == {
+            "entree": ["Pizza", "Burger"],
+            "fruit": ["Apple"],
+        }
+        assert tomorrow_state.state == "No menu"
+
+        # Ensure serialized attributes are tiny (< 1 KB, nowhere near HA's 16 KB limit)
+        assert len(json.dumps(dict(today_state.attributes))) < 1024
