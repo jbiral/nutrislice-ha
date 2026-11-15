@@ -1,127 +1,100 @@
-"""Test the Nutrislice sensor."""
+"""Test the Nutrislice Today and Tomorrow sensors."""
 
-from unittest.mock import patch
+from __future__ import annotations
 
-import pytest
-from homeassistant.core import HomeAssistant
+import json
+from unittest.mock import AsyncMock, patch
 
-from custom_components.nutrislice.coordinator import NutrisliceDataUpdateCoordinator
-from custom_components.nutrislice.sensor import NutrisliceSensor
+from homeassistant.helpers import entity_registry
+from homeassistant.helpers.entity_component import async_update_entity
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
-@pytest.mark.asyncio
-async def test_sensor_state_and_attributes(hass: HomeAssistant) -> None:
-    """Test the sensor parses data correctly."""
-    coordinator = NutrisliceDataUpdateCoordinator(
-        hass, district="my-district", school_name="elementary-school", meal_type="lunch"
-    )
+async def test_sensor_today_and_tomorrow(hass, freezer, mock_nutrislice_data_validated):
+    """Test Today and Tomorrow sensors parse state and attributes properly."""
+    # Start on Sunday 2026-02-15 (Tomorrow is Presidents Day 2026-02-16)
+    freezer.move_to("2026-02-15 10:00:00")
 
-    # Mock data directly
-    mock_data = {
-        "current_week": {
-            "days": [
-                {
-                    "date": "2026-02-16",
-                    "menu_items": [
-                        {
-                            "is_holiday": True,
-                            "text": "Presidents Day",
-                        }
-                    ],
-                },
-                {
-                    "date": "2026-02-17",
-                    "menu_items": [
-                        {
-                            "is_holiday": False,
-                            "food": {
-                                "food_category": "entree",
-                                "name": "Pizza",
-                                "description": "Cheese Pizza",
-                            },
-                        },
-                        {
-                            "is_holiday": False,
-                            "food": {
-                                "food_category": "entree",
-                                "name": "Burger",
-                                "description": "Hamburger",
-                            },
-                        },
-                        {
-                            "is_holiday": False,
-                            "food": {
-                                "food_category": "sides",
-                                "name": "Apple",
-                            },
-                        },
-                    ],
-                },
-            ]
-        },
-        "next_week": None,
-    }
+    with patch(
+        "custom_components.nutrislice.coordinator.NutrisliceDataUpdateCoordinator._async_update_data",
+        new_callable=AsyncMock,
+        return_value=mock_nutrislice_data_validated,
+    ):
+        mock_entry = MockConfigEntry(
+            domain="nutrislice",
+            data={
+                "district": "my-district",
+                "school_name": "elementary-school",
+                "meal_type": "lunch",
+                "categories": ["entree", "fruit"],
+            },
+            entry_id="test_123",
+        )
+        mock_entry.add_to_hass(hass)
 
-    coordinator.data = mock_data
-    from unittest.mock import MagicMock
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
 
-    mock_entry = MagicMock()
-    mock_entry.data = {
-        "district": "my-district",
-        "school_name": "elementary-school",
-        "meal_type": "lunch",
-        "categories": ["entree", "sides"],
-    }
+        ent_reg = entity_registry.async_get(hass)
 
-    sensor = NutrisliceSensor(coordinator, mock_entry)
+        today_entry = ent_reg.async_get("sensor.elementary_school_lunch_today")
+        tomorrow_entry = ent_reg.async_get("sensor.elementary_school_lunch_tomorrow")
+        assert today_entry is not None
+        assert tomorrow_entry is not None
+        assert (
+            today_entry.unique_id
+            == "nutrislice_my-district_elementary-school_lunch_today"
+        )
+        assert (
+            tomorrow_entry.unique_id
+            == "nutrislice_my-district_elementary-school_lunch_tomorrow"
+        )
 
-    # 1. Test basic attributes (name/id)
-    assert sensor.name == "Elementary School Lunch"
-    assert sensor.unique_id == "nutrislice_my-district_elementary-school_lunch"
+        # On 2026-02-15: Today has no menu, Tomorrow (2026-02-16) is Presidents Day
+        today_state = hass.states.get("sensor.elementary_school_lunch_today")
+        tomorrow_state = hass.states.get("sensor.elementary_school_lunch_tomorrow")
 
-    # 2. Test attributes parsing
-    attrs = sensor.extra_state_attributes
-    assert attrs["district"] == "my-district"
-    assert len(attrs["days"]) == 2
+        assert today_state.state == "No menu"
+        assert today_state.attributes.get("date") == "2026-02-15"
+        assert today_state.attributes.get("is_holiday") is False
+        assert today_state.attributes.get("items_by_category") == {}
 
-    # Check Holiday Day
-    holiday_day = attrs["days"][0]
-    assert holiday_day["date"] == "2026-02-16"
-    assert holiday_day["is_holiday"] is True
-    assert holiday_day["holiday_name"] == "Presidents Day"
+        assert tomorrow_state.state == "Presidents Day"
+        assert tomorrow_state.attributes.get("date") == "2026-02-16"
+        assert tomorrow_state.attributes.get("is_holiday") is True
+        assert tomorrow_state.attributes.get("holiday_name") == "Presidents Day"
 
-    # Check Regular Menu Day
-    menu_day = attrs["days"][1]
-    assert menu_day["date"] == "2026-02-17"
-    assert menu_day["is_holiday"] is False
-    assert menu_day["has_menu"] is True
-    assert len(menu_day["menu_items"]) == 3
-    assert menu_day["menu_items"][0]["name"] == "Pizza"
-    assert menu_day["menu_items"][0]["category"] == "entree"
+        # Move to Monday 2026-02-16 (Holiday): Today is Presidents Day, Tomorrow (2026-02-17) has Pizza, Burger
+        freezer.move_to("2026-02-16 10:00:00")
+        await async_update_entity(hass, "sensor.elementary_school_lunch_today")
+        await async_update_entity(hass, "sensor.elementary_school_lunch_tomorrow")
 
-    # 3. Test State (Depends on today's date, mock datetime)
-    with patch("custom_components.nutrislice.sensor.datetime") as mock_datetime:
-        # Mock today as the holiday
-        mock_now = mock_datetime.now.return_value
-        mock_now.strftime.return_value = "2026-02-16"
-        mock_now.hour = 10
-        assert sensor.native_value == "Presidents Day"
+        today_state = hass.states.get("sensor.elementary_school_lunch_today")
+        tomorrow_state = hass.states.get("sensor.elementary_school_lunch_tomorrow")
 
-        # Mock today as the menu day
-        mock_now.strftime.return_value = "2026-02-17"
-        mock_now.hour = 10
-        assert sensor.native_value == "2 Entrees Available"
+        assert today_state.state == "Presidents Day"
+        assert tomorrow_state.state == "Pizza, Burger"
+        assert tomorrow_state.attributes.get("date") == "2026-02-17"
+        assert tomorrow_state.attributes.get("menu_summary") == "Pizza, Burger, Apple"
+        assert tomorrow_state.attributes.get("items_by_category") == {
+            "entree": ["Pizza", "Burger"],
+            "fruit": ["Apple"],
+        }
 
-    # 4. Test set_target_date service (Handle the timedelta logic)
-    with patch("custom_components.nutrislice.sensor.datetime") as mock_datetime:
-        from datetime import datetime as dt
+        # Move to Tuesday 2026-02-17: Today has Pizza, Burger; Tomorrow has No menu
+        freezer.move_to("2026-02-17 10:00:00")
+        await async_update_entity(hass, "sensor.elementary_school_lunch_today")
+        await async_update_entity(hass, "sensor.elementary_school_lunch_tomorrow")
 
-        mock_now = mock_datetime.now.return_value
-        mock_now.strftime.side_effect = lambda fmt: (
-            dt(2026, 2, 17) if fmt == "%Y-%m-%d" else dt(2026, 2, 17)
-        ).strftime(fmt)
-        mock_now.hour = 10  # Before 1 PM - THIS WAS TRIGGERING THE ERROR
+        today_state = hass.states.get("sensor.elementary_school_lunch_today")
+        tomorrow_state = hass.states.get("sensor.elementary_school_lunch_tomorrow")
 
-        # This SHOULD NO LONGER fail with UnboundLocalError
-        attrs = sensor.extra_state_attributes
-        assert attrs["target_date"] == "2026-02-17"
+        assert today_state.state == "Pizza, Burger"
+        assert today_state.attributes.get("items_by_category") == {
+            "entree": ["Pizza", "Burger"],
+            "fruit": ["Apple"],
+        }
+        assert tomorrow_state.state == "No menu"
+
+        # Ensure serialized attributes are tiny (< 1 KB, nowhere near HA's 16 KB limit)
+        assert len(json.dumps(dict(today_state.attributes))) < 1024

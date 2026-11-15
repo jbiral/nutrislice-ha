@@ -1,30 +1,50 @@
-"""Sensor platform for nutrislice."""
+"""Sensor platform for Nutrislice."""
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from typing import Any
 
-import voluptuous as vol
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_platform
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
-from .const import (
-    CONF_CATEGORIES,
-    CONF_DISTRICT,
-    CONF_MEAL_TYPE,
-    CONF_SCHOOL_NAME,
-    DEFAULT_CATEGORIES,
-    DOMAIN,
-)
+from .const import DOMAIN
 from .coordinator import NutrisliceDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, kw_only=True)
+class NutrisliceSensorEntityDescription(SensorEntityDescription):
+    """Describes a Nutrislice daily menu sensor entity."""
+
+    day_offset: int
+
+
+SENSOR_DESCRIPTIONS: tuple[NutrisliceSensorEntityDescription, ...] = (
+    NutrisliceSensorEntityDescription(
+        key="today",
+        translation_key="today",
+        name="Today",
+        icon="mdi:food-apple",
+        day_offset=0,
+    ),
+    NutrisliceSensorEntityDescription(
+        key="tomorrow",
+        translation_key="tomorrow",
+        name="Tomorrow",
+        icon="mdi:calendar-arrow-right",
+        day_offset=1,
+    ),
+)
 
 
 async def async_setup_entry(
@@ -33,241 +53,98 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the sensor platform from a config entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-
+    coordinator: NutrisliceDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
-        [
-            NutrisliceSensor(
-                coordinator,
-                entry,
-            )
-        ]
-    )
-
-    platform = entity_platform.async_get_current_platform()
-
-    # Register the set_date service for the sensor
-    platform.async_register_entity_service(
-        "set_date",
-        {
-            vol.Required("date"): str,
-        },
-        "set_target_date",
+        NutrisliceSensor(coordinator, entry, description)
+        for description in SENSOR_DESCRIPTIONS
     )
 
 
 class NutrisliceSensor(
     CoordinatorEntity[NutrisliceDataUpdateCoordinator], SensorEntity
 ):
-    """Representation of a Nutrislice Sensor.
+    """Representation of a Nutrislice daily menu sensor (Today or Tomorrow).
 
-    This sensor displays the available menu items for a specific school and meal type.
-    The primary state reflects the number of items in the first selected category (usually 'entree').
-    Detailed menu information is available in the extra state attributes.
+    The primary state shows the comma-separated items in the primary category
+    (e.g. 'Pizza, Burger'), the holiday name (e.g. 'Presidents Day'), or 'No menu'.
+    The extra state attributes contain only that single day's categorized items,
+    keeping database storage tiny (~200-350 bytes).
     """
+
+    _attr_has_entity_name = True
+    entity_description: NutrisliceSensorEntityDescription
 
     def __init__(
         self,
         coordinator: NutrisliceDataUpdateCoordinator,
         entry: ConfigEntry,
+        description: NutrisliceSensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.entry = entry
-        self.district = entry.data[CONF_DISTRICT]
-        self.school_name = entry.data[CONF_SCHOOL_NAME]
-        self.meal_type = entry.data[CONF_MEAL_TYPE]
-        self.categories = entry.data.get(CONF_CATEGORIES, DEFAULT_CATEGORIES)
+        self.config = coordinator.config
+        self.entity_description = description
+        self._attr_unique_id = f"{self.config.unique_id}_{description.key}"
 
-        self._attr_name = (
-            f"{self.school_name.replace('-', ' ').title()} {self.meal_type.title()}"
-        )
-        self._attr_unique_id = (
-            f"nutrislice_{self.district}_{self.school_name}_{self.meal_type}"
-        )
-        self._attr_icon = "mdi:food-apple"
-        self._target_date: str | None = None
-
-    async def set_target_date(self, date: str) -> None:
-        """Handle the service call to set the target date for this sensor."""
-        if date.lower() == "today":
-            self._target_date = datetime.now().strftime("%Y-%m-%d")
-        elif date.lower() == "tomorrow":
-            self._target_date = (datetime.now() + timedelta(days=1)).strftime(
-                "%Y-%m-%d"
+    async def async_added_to_hass(self) -> None:
+        """Register callbacks when entity is added to Home Assistant."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_track_time_change(
+                self.hass,
+                self._handle_midnight_update,
+                hour=0,
+                minute=0,
+                second=0,
             )
-        else:
-            self._target_date = date
+        )
 
+    @callback
+    def _handle_midnight_update(self, _now: datetime) -> None:
+        """Update sensor state at midnight when the target date rolls over."""
         self.async_write_ha_state()
 
     @property
-    def _target_date_str(self) -> str:
-        """Return the target date as a string."""
-        if self._target_date:
-            return self._target_date
-
-        now = datetime.now()
-        if now.hour >= 13:
-            return (now + timedelta(days=1)).strftime("%Y-%m-%d")
-        return now.strftime("%Y-%m-%d")
-
-    def _get_items_for_category(
-        self, day: dict[str, Any], category: str
-    ) -> list[dict[str, Any]]:
-        """Get items for a specific category using flexible matching."""
-        allowed_aliases = [category]
-        if category == "sides":
-            allowed_aliases.extend(["vegetable", "fruit", "gain"])
-
-        foods = []
-        for item in day.get("menu_items", []):
-            if not item.get("food"):
-                continue
-
-            item_cat = item.get("category")
-            if not item_cat and item.get("food"):
-                item_cat = item["food"].get("food_category")
-
-            cat = (item_cat or "").lower()
-            if not cat:
-                continue
-
-            if any(cat.startswith(a) or a.startswith(cat) for a in allowed_aliases):
-                foods.append(item)
-        return foods
+    def device_info(self) -> DeviceInfo:
+        """Return device information about this Nutrislice instance."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.config.unique_id)},
+            name=self.config.device_name,
+            manufacturer="Nutrislice",
+            model="School Menu",
+        )
 
     @property
-    def native_value(self) -> str:
-        """Return the state of the sensor.
+    def _target_date(self) -> date:
+        """Return the target date for this sensor in the Home Assistant timezone."""
+        return dt_util.now().date() + timedelta(days=self.entity_description.day_offset)
 
-        Shows the number of available items for the first selected category.
-        """
+    @property
+    def native_value(self) -> str | None:
+        """Return the primary menu items, holiday name, or 'No menu'."""
         if not self.coordinator.data:
-            return "unavailable"
+            return None
 
-        target_str = self._target_date_str
-        main_cat = self.categories[0] if self.categories else "entree"
+        day = self.coordinator.get_day(self._target_date)
+        if day is None:
+            return "No menu"
 
-        for day in self._get_all_days():
-            if day.get("date") == target_str:
-                # Check if it's a holiday
-                for item in day.get("menu_items", []):
-                    if item.get("is_holiday"):
-                        return item.get("text", "Holiday")
-
-                foods = self._get_items_for_category(day, main_cat)
-                if foods:
-                    return f"{len(foods)} {main_cat.title()}s Available"
-                return f"No {main_cat.title()}s/Weekend"
-
-        return "unknown"
-
-    def _get_all_days(self) -> list[dict[str, Any]]:
-        """Get a deduplicated and sorted list of all days from the coordinator."""
-        if not self.coordinator.data:
-            return []
-
-        all_days_raw = []
-        if self.coordinator.data.get("previous_week"):
-            all_days_raw.extend(self.coordinator.data["previous_week"].get("days", []))
-        if self.coordinator.data.get("current_week"):
-            all_days_raw.extend(self.coordinator.data["current_week"].get("days", []))
-        if self.coordinator.data.get("next_week"):
-            all_days_raw.extend(self.coordinator.data["next_week"].get("days", []))
-
-        # Deduplicate by date and sort
-        unique_days = {}
-        for day in all_days_raw:
-            date_str = day.get("date")
-            if date_str and date_str not in unique_days:
-                unique_days[date_str] = day
-
-        return [unique_days[d] for d in sorted(unique_days.keys())]
-
-    def _parse_day_data(self, day: dict[str, Any]) -> dict[str, Any]:
-        """Parse raw day data into a structured format for the frontend."""
-        date_str = day.get("date")
-        if not date_str:
-            return {}
-
-        day_data = {
-            "date": date_str,
-            "is_holiday": False,
-            "holiday_name": None,
-            "menu_items": [],
-            "has_menu": False,
-        }
-
-        for item in day.get("menu_items", []):
-            if item.get("is_holiday"):
-                day_data["is_holiday"] = True
-                day_data["holiday_name"] = item.get("text", "Holiday")
-                break
-
-            category = item.get("category")
-            if not category and item.get("food"):
-                category = item["food"].get("food_category")
-
-            if category:
-                category = category.lower()
-
-            if item.get("food"):
-                name = item["food"].get("name", "").strip()
-                if name and name != "Menu Subject to Change":
-                    day_data["menu_items"].append(
-                        {
-                            "name": name,
-                            "category": category or "other",
-                        }
-                    )
-                    day_data["has_menu"] = True
-
-        if day_data["is_holiday"]:
-            day_data["menu_summary"] = day_data["holiday_name"]
-        elif day_data["menu_items"]:
-            day_data["menu_summary"] = ", ".join(
-                [item["name"] for item in day_data["menu_items"]]
-            )
-        else:
-            day_data["menu_summary"] = "No menu"
-
-        return day_data
+        return day.format_state_value(self.config.primary_category)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return the state attributes."""
+        """Return compact state attributes for this single day."""
         if not self.coordinator.data:
             return {}
 
-        parsed_days = []
-        for day in self._get_all_days():
-            day_data = self._parse_day_data(day)
-            if day_data:
-                parsed_days.append(day_data)
-
-        target_str = self._target_date_str
-
-        today_str_abs = datetime.now().strftime("%Y-%m-%d")
-        tomorrow_str_abs = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-
-        today_menu = next(
-            (d["menu_summary"] for d in parsed_days if d["date"] == today_str_abs),
-            "No menu",
-        )
-        tomorrow_menu = next(
-            (d["menu_summary"] for d in parsed_days if d["date"] == tomorrow_str_abs),
-            "No menu",
-        )
+        target = self._target_date
+        day = self.coordinator.get_day(target)
 
         return {
-            "get_target_date": target_str,  # Keep for existing logic if any
-            "target_date": target_str,
-            "district": self.district,
-            "school_name": self.school_name,
-            "meal_type": self.meal_type,
-            "categories": self.categories,
-            "today_menu": today_menu,
-            "tomorrow_menu": tomorrow_menu,
-            "days": parsed_days,
+            "date": target.isoformat(),
+            "is_holiday": day.is_holiday if day else False,
+            "holiday_name": day.holiday_name if day else None,
+            "menu_summary": day.menu_summary if day else "No menu",
+            "items_by_category": day.items_grouped_by_category() if day else {},
         }
